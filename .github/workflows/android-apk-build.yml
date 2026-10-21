@@ -3,16 +3,7 @@ name: Build Android APK (Plants App)
 on:
   push:
     branches: [ "main", "master" ]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build Type'
-        required: false
-        default: 'debug'
 
 jobs:
   build-apk:
@@ -36,18 +27,15 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: 4. Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 5. Install Node Dependencies
+      - name: 4. Install Node Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 6. Build Web Application Assets
+      - name: 5. Build Web Application Assets
         run: npm run build
         env:
           NODE_ENV: production
 
-      - name: 7. Initialize & Sync Capacitor Android
+      - name: 6. Sync Capacitor Android Platform
         run: |
           if [ ! -d "android" ]; then
             echo "Initializing Android platform with Capacitor..."
@@ -55,46 +43,15 @@ jobs:
           fi
           npx cap sync android
 
-      - name: 8. Configure Android Environment & Licenses
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          chmod +x android/gradlew
-          mkdir -p "$ANDROID_HOME/licenses" || true
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license" || true
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license" || true
-
-      - name: 9. Build Android Debug APK with Gradle
+      - name: 7. Build Android Debug APK
         working-directory: ./android
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace -Pandroid.suppressUnsupportedCompileSdk=35,36
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon -Pandroid.suppressUnsupportedCompileSdk=35,36
 
-      - name: 10. Locate & Package APK
-        run: |
-          mkdir -p build-output
-          APK_PATH=$(find android -name "*debug.apk" -o -name "app-*.apk" | head -n 1)
-          if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
-            echo "Found APK at: $APK_PATH"
-            cp "$APK_PATH" build-output/Plants-CropDoctor-debug.apk
-            ls -lh build-output/
-          else
-            echo "APK not found. Searching build directory:"
-            find android -name "*.apk" || true
-            exit 1
-          fi
-
-      - name: 11. Upload APK Artifact (Download from GitHub Actions)
+      - name: 8. Upload APK Artifact (Download from GitHub Actions)
         uses: actions/upload-artifact@v4
         with:
           name: Plants-CropDoctor-Android-APK
-          path: build-output/Plants-CropDoctor-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
-
-      - name: 12. Create GitHub Release (If tagged)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        continue-on-error: true
-        with:
-          name: Plants Release ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            build-output/Plants-CropDoctor-debug.apk
